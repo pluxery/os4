@@ -59,7 +59,7 @@ public:
             return -1;
         }
         int summary_temperatures = 0;
-        int count_values = 1;
+        int count_values = 0;
 
         std::ifstream log_file(_from_file_name);
         if (!log_file) {
@@ -85,6 +85,10 @@ public:
                 summary_temperatures += std::stoi(temperature_str);
             }
         }
+        if (count_values == 0) {
+            return 0;
+        }
+
         std::cout << "average temperature = " << summary_temperatures / count_values << std::endl;
         log_file.close();
         return summary_temperatures / count_values;
