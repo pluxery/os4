@@ -1,5 +1,6 @@
 #pragma once
 
+#include <format>
 #include <sstream>
 #include <iostream>
 #include <fstream>
@@ -13,87 +14,68 @@
 #	include <time.h>
 #endif
 
+#include "db/sqlite3.h"
+#include "db/config.hpp"
 #include <cstdlib>
-
-#define LOG_SEPARATOR '#'
-#define DATETIME_FORMAT "%Y-%m-%d %H:%M:%S"
-
 
 class Repository {
 public:
-    /* Задать источник считывания данных. */
-    void setFileFrom(const std::string &from_file_name) {
-        _from_file_name = from_file_name;
+
+    Repository() {
+        this->_db = Config::CreateTables();
     }
 
-    /* Сохранить в указанный файл. */
-    void saveTo(const std::string &log_file_name, const std::string &temperature) {
+    void insert(const std::string &table, const std::string &temperature) {
+
         if (!HelpUtils::isNumber(temperature)) {
+            std::cerr << "Error: temperature is not number: " << temperature << std::endl;
             return;
         }
-        auto now = std::chrono::system_clock::now();
-        std::time_t cur_time = std::chrono::system_clock::to_time_t(now);
 
-        std::stringstream ss;
-        ss << std::put_time(std::localtime(&cur_time), DATETIME_FORMAT);
-        std::string dateTimeStr = ss.str();
-
-        std::ofstream logfile;
-        logfile.open(log_file_name, std::ios::app);
-
-        if (logfile.is_open()) {
-            logfile << temperature << LOG_SEPARATOR << dateTimeStr << std::endl;
-            logfile.close();
-        } else {
-            std::cerr << "Failed to open log file: " << log_file_name << std::endl;
-        }
+        std::string datetime = HelpUtils::convertTimePointToString(std::chrono::system_clock::now());
+        insertQuery(table, temperature, datetime);
     }
 
-    /* Получить в среднюю температуру за указанный временной интервал. */
-    int getAverageTemperatureByTimeInterval(
+
+    int GetAvgTemperature(
+            const std::string &table,
             const std::chrono::system_clock::time_point &start_date_time,
             const std::chrono::system_clock::time_point &end_date_time) {
 
-        if (_from_file_name.empty()) {
-            std::cerr << "Set file from get info! " << std::endl;
-            return -1;
+        std::string start_t = HelpUtils::convertTimePointToString(start_date_time);
+        std::string end_t = HelpUtils::convertTimePointToString(end_date_time);
+
+        std::ostringstream query;
+        sqlite3_stmt *stmt;
+        int result;
+
+        query << "SELECT AVG(temperature) AS avg_temperature FROM " << table
+              << " WHERE created_at >= '" << start_t << "' AND created_at <= '" << end_t << "';";
+
+        sqlite3_prepare_v2(_db, query.str().c_str(), -1, &stmt, nullptr);
+
+        while (sqlite3_step(stmt) == SQLITE_ROW) {
+            result = sqlite3_column_int(stmt, 0);
         }
-        int summary_temperatures = 0;
-        int count_values = 0;
+        sqlite3_finalize(stmt);
 
-        std::ifstream log_file(_from_file_name);
-        if (!log_file) {
-            std::cerr << "Failed to open log file: " << _from_file_name << std::endl;
-            return -1;
-        }
+        return result;
 
-        std::string line;
-
-        while (std::getline(log_file, line)) {
-            if (line.empty()) {
-                continue;
-            }
-            std::istringstream ss(line.substr(line.find(LOG_SEPARATOR) + 1));
-            std::string datetime_str = ss.str();
-
-            std::tm time_info = HelpUtils::convertStringToTm(datetime_str);
-            auto temperature_created_date_time = std::chrono::system_clock::from_time_t(std::mktime(&time_info));
-
-            if (temperature_created_date_time >= start_date_time && temperature_created_date_time <= end_date_time) {
-                count_values++;
-                std::string temperature_str = line.substr(0, line.find(LOG_SEPARATOR));
-                summary_temperatures += std::stoi(temperature_str);
-            }
-        }
-        if (count_values == 0) {
-            return 0;
-        }
-
-        std::cout << "average temperature = " << summary_temperatures / count_values << std::endl;
-        log_file.close();
-        return summary_temperatures / count_values;
     }
 
 private:
-    std::string _from_file_name;
+    sqlite3 *_db = nullptr;
+
+    void insertQuery(const std::string &table, const std::string &temperature, const std::string &datetime) {
+        char *err = nullptr;
+        std::ostringstream query;
+        query << "INSERT INTO " << table << "(temperature, created_at) VALUES" "(" << temperature << ", " << "'"
+              << datetime << "'"
+              << ");";
+
+        if (sqlite3_exec(_db, query.str().c_str(), nullptr, nullptr, &err)) {
+            fprintf(stderr, "Ошибка SQL: %sn", err);
+            sqlite3_free(err);
+        }
+    }
 };

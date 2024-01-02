@@ -1,4 +1,5 @@
 #pragma once
+
 #include <sstream>
 #include <iostream>
 #include <fstream>
@@ -12,6 +13,7 @@
 #endif
 
 #include <cstdlib>
+#define DATETIME_FORMAT "%Y-%m-%d %H:%M:%S"
 
 class HelpUtils {
 public:
@@ -36,14 +38,23 @@ public:
         std::tm resultTimeInfo = {};
 
         std::istringstream ss(dateTimeStr);
-        ss >> std::get_time(&resultTimeInfo, "%Y-%m-%d %H:%M:%S");
+        ss >> std::get_time(&resultTimeInfo, DATETIME_FORMAT);
 
         if (ss.fail()) {
             std::cerr << "Date parsing failed!" << std::endl;
         }
-        std::put_time(&resultTimeInfo, "%Y-%m-%d %H:%M:%S");
+        std::put_time(&resultTimeInfo, DATETIME_FORMAT);
 
         return resultTimeInfo;
+    }
+
+    static std::string convertTimePointToString(std::chrono::system_clock::time_point time_point) {
+        std::time_t time_t = std::chrono::system_clock::to_time_t(time_point);
+        std::string str_time;
+        std::tm *time_struct = std::localtime(&time_t);
+        std::stringstream ss;
+        ss << std::put_time(time_struct, DATETIME_FORMAT);
+        return ss.str();
     }
 
     static void sleep(double timeout) {
